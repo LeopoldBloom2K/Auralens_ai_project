@@ -1,0 +1,13 @@
+/data/*
+/dataset/*
+/models/*
+/logs/*
+/outputs/*
+/venv/*
+*.pyc
+__pycache__/
+.DS_Store
+.idea/
+.vscode/
+weights/*
+raw_datasets/*
