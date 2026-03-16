@@ -28,6 +28,7 @@ def get_dataloaders(data_dir, batch_size=32):
     ])
 
     # 3. 폴더에서 이미지 불러오기 (자동 라벨링)
+    # 💡 꿀팁: ImageFolder는 폴더 안에 있는 하위 폴더 개수를 스스로 세어서 4개 클래스로 자동 분리합니다.
     train_dataset = datasets.ImageFolder(os.path.join(data_dir, 'train'), transform=train_transforms)
     val_dataset = datasets.ImageFolder(os.path.join(data_dir, 'val'), transform=val_transforms)
 
@@ -53,15 +54,17 @@ def get_dataloaders(data_dir, batch_size=32):
 
 # 테스트용 코드
 if __name__ == "__main__":
-    # 데이터 폴더 경로 지정 (실제 폴더 구조에 맞게 수정)
-    # 미리 data/train, data/val 폴더를 만들고 임의의 이미지 넣고 실행
+    # 🚀 수정: 데이터 폴더 경로를 프로젝트 구조에 맞게 './dataset'으로 변경
     try:
-        train_loader, val_loader, classes = get_dataloaders(data_dir='./data', batch_size=16)
-        print(f"찾아낸 클래스 목록: {classes}")
+        train_loader, val_loader, classes = get_dataloaders(data_dir='./dataset', batch_size=16)
+        
+        # 여기서 자동으로 4개의 클래스('food', 'person', 'scenery', 'unknown')가 잘 잡히는지 출력합니다.
+        print(f"✅ 자동으로 찾아낸 클래스 목록: {classes}") 
         
         # 첫 번째 배치(Batch) 확인
         images, labels = next(iter(train_loader))
         print(f"이미지 텐서 형태: {images.shape}") # 예상: [16, 3, 224, 224]
         print(f"라벨 텐서 형태: {labels.shape}")   # 예상: [16]
+        
     except FileNotFoundError:
-        print("data/ 폴더 구조를 먼저 만들어주세요!")
+        print("❌ dataset/ 폴더 구조를 먼저 만들어주세요! (prepare_dataset.py를 실행해야 합니다)")

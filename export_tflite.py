@@ -9,8 +9,8 @@ def export_to_onnx():
     # 1. 모델 구조 생성
     model = models.mobilenet_v3_large()
     num_features = model.classifier[3].in_features
-    model.classifier[3] = nn.Linear(num_features, 3) # 클래스 개수 3개 (food, person, scenery)
-    
+    model.classifier[4] = nn.Linear(num_features, 3) # 클래스 개수 4개 (0: food, 1: person, 2: scenery, 3: unknown)
+
     # 2. 학습된 가중치 불러오기
     weight_path = './weights/best_auralens_model.pth'
     model.load_state_dict(torch.load(weight_path, map_location='cpu'))

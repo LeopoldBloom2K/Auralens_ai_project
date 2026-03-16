@@ -10,7 +10,7 @@ def prepare_dataset():
     base_dir = Path('./dataset')
     train_dir = base_dir / 'train'
     val_dir = base_dir / 'val'
-    classes = ['person', 'food', 'scenery']
+    classes = ['person', 'food', 'scenery', 'unknown']
 
     for dir_path in [train_dir, val_dir]:
         for cls in classes:
@@ -30,6 +30,9 @@ def prepare_dataset():
         'scenery': [
             Path('./raw_datasets/intel-image-classification/seg_train/seg_train'),
             Path('./raw_datasets/intel-image-classification/seg_test/seg_test')
+        ],
+        'unknown': [
+            Path('./raw_datasets/coco_val2017/val2017')
         ]
     }
 
