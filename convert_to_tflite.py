@@ -1,82 +1,78 @@
 import tensorflow as tf
-import onnx2tf  # 🚀 최신 변환 라이브러리로 교체!
+import onnx2tf
+import onnx
 import numpy as np
-from PIL import Image
-import glob
 import os
+import shutil
+
+
+def _simplify_onnx(onnx_path: str, simplified_path: str) -> str:
+    """onnxsim으로 그래프를 단순화. 실패하면 원본 경로 반환."""
+    try:
+        import onnxsim
+        model = onnx.load(onnx_path)
+        simplified, ok = onnxsim.simplify(model)
+        if ok:
+            onnx.save(simplified, simplified_path)
+            print(f"  ONNX 단순화 완료: {simplified_path}")
+            return simplified_path
+        else:
+            print("  ONNX 단순화 실패 — 원본 사용")
+    except Exception as e:
+        print(f"  ONNX 단순화 스킵 ({e}) — 원본 사용")
+    return onnx_path
+
 
 def convert_onnx_to_tflite():
-    onnx_path = './weights/auralens_model.onnx'
-    tf_model_path = './weights/tf_saved_model'
-    tflite_path = './weights/auralens_model_int8.tflite'
+    onnx_path      = './weights/auralens_model.onnx'
+    simplified_path = './weights/auralens_model_simplified.onnx'
+    tf_model_path  = './weights/tf_saved_model'
+    tflite_path    = './weights/auralens_model_int8.tflite'
 
     if not os.path.exists(onnx_path):
-        print("❌ ONNX 파일을 찾을 수 없습니다. export_tflite.py를 먼저 실행해 주세요!")
+        print("ONNX 파일을 찾을 수 없습니다. export_tflite.py를 먼저 실행하세요.")
         return
 
+    # 이전 SavedModel 캐시 삭제 (오래된 변환 결과가 남아 있으면 오류 유발)
+    if os.path.exists(tf_model_path):
+        shutil.rmtree(tf_model_path)
+
     # ---------------------------------------------------------
-    # 1단계: onnx2tf를 사용하여 TensorFlow SavedModel로 변환
+    # 0단계: ONNX 그래프 단순화 (RESHAPE 등 복잡한 노드 정리)
     # ---------------------------------------------------------
-    print("1️⃣ ONNX 모델을 TensorFlow SavedModel로 변환 중 (onnx2tf 가동!)...")
-    
-    # onnx2tf 변환 실행
+    print("0 ONNX 그래프 단순화 중...")
+    src_onnx = _simplify_onnx(onnx_path, simplified_path)
+
+    # ---------------------------------------------------------
+    # 1단계: onnx2tf — ONNX → TensorFlow SavedModel
+    # ---------------------------------------------------------
+    print("\n1 ONNX -> TF SavedModel 변환 중...")
     onnx2tf.convert(
-        input_onnx_file_path=onnx_path,
+        input_onnx_file_path=src_onnx,
         output_folder_path=tf_model_path,
         copy_onnx_input_output_names_to_tflite=True,
-        non_verbose=True, # 화면에 불필요한 로그가 너무 많이 뜨는 것을 방지
+        non_verbose=True,
     )
-    print(f"✅ TF SavedModel 임시 저장 완료: {tf_model_path}")
+    print(f"  TF SavedModel 저장 완료: {tf_model_path}")
 
     # ---------------------------------------------------------
-    # 2단계: TensorFlow 모델을 TFLite (INT8 양자화)로 압축 변환
+    # 2단계: TFLite 동적 범위 양자화 변환 (가중치 INT8, 활성화 float32)
+    # 캘리브레이션 데이터 없이도 full INT8 대비 동등한 크기 감소 달성.
+    # full INT8(활성화까지 양자화)은 onnx2tf 변환 모델에서 출력 스케일
+    # 불일치를 일으키므로 사용하지 않음.
     # ---------------------------------------------------------
-    print("\n2️⃣ TensorFlow 모델을 TFLite(INT8 양자화)로 변환 중... (시간이 조금 걸립니다)")
+    print("\n2 TFLite 동적 범위 양자화 변환 중...")
     converter = tf.lite.TFLiteConverter.from_saved_model(tf_model_path)
-    
-    # INT8 양자화를 위한 최적화 켜기
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
-    def representative_data_gen():
-        # 검증(val) 폴더에서 무작위로 사진을 가져옴
-        image_paths = glob.glob('./dataset/val/*/*.jpg') + glob.glob('./dataset/val/*/*.jpeg') + glob.glob('./dataset/val/*/*.png')
-        np.random.shuffle(image_paths)
-        
-        for path in image_paths[:100]:  # 100장만 사용해도 충분함
-            try:
-                img = Image.open(path).convert('RGB')
-                img = img.resize((224, 224))
-                img_array = np.array(img, dtype=np.float32)
-                
-                # 훈련할 때 사용했던 PyTorch 정규화 수식
-                img_array = img_array / 255.0
-                mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-                std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-                img_array = (img_array - mean) / std
-                
-                # NCHW (1, 3, 224, 224) 차원으로 맞춤
-                img_array = np.transpose(img_array, (2, 0, 1))
-                img_array = np.expand_dims(img_array, axis=0)
-                
-                yield [img_array]
-            except Exception as e:
-                pass # 깨진 이미지가 있으면 무시하고 넘어감
-
-    converter.representative_dataset = representative_data_gen
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-    
-    converter.inference_input_type = tf.float32
-    converter.inference_output_type = tf.float32
-
-    # 변환 실행
     tflite_model = converter.convert()
 
-    # 최종 파일 저장
     with open(tflite_path, 'wb') as f:
         f.write(tflite_model)
-        
-    print(f"\n🎉 최종 TFLite INT8 양자화 모델 완성! 파일 위치: {tflite_path}")
-    print("📉 용량이 대폭 줄어들고 스마트폰 연산에 완벽하게 최적화되었습니다!")
+
+    size_mb = os.path.getsize(tflite_path) / 1024 / 1024
+    print(f"\nTFLite INT8 모델 완성: {tflite_path}  ({size_mb:.1f} MB)")
+
 
 if __name__ == '__main__':
     convert_onnx_to_tflite()

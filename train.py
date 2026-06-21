@@ -1,14 +1,16 @@
+# -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms, models
 import os
 import time
 
 def train_model():
-    # 1. 사용 가능한 GPU 확인
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"🚀 학습 시작! 사용 장치: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
+    device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'
+    print(f"[START] 학습 시작! 사용 장치: {device_name}")
 
     # 2. 데이터 증강(Augmentation)
     data_transforms = {
@@ -31,27 +33,36 @@ def train_model():
     data_dir = './dataset'
     image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x]) for x in ['train', 'val']}
     
-    # batch_size는 VRAM에 무리가 가지 않도록 32로 설정 (여유가 있다면 64로 올려도 됨)
-    dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=32, shuffle=True, num_workers=0) for x in ['train', 'val']}
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
     class_names = image_datasets['train'].classes
     
-    print(f"📸 인식할 클래스 목록: {class_names}")
-    print(f"📊 데이터 수: 학습용 {dataset_sizes['train']}장 / 검증용 {dataset_sizes['val']}장\n")
+    print(f"[CLASSES] {class_names}")
+    print(f"[DATASET] Train: {dataset_sizes['train']} images / Val: {dataset_sizes['val']} images")
 
-    # 4. MobileNetV3 모델 불러오기 및 수정 (전이 학습)
+    # 4. 클래스 불균형 대비 — WeightedRandomSampler
+    targets = image_datasets['train'].targets
+    class_counts = [targets.count(i) for i in range(len(class_names))]
+    print(f"[CLASS_DISTRIBUTION] {dict(zip(class_names, class_counts))}\n")
+
+    sample_weights = [1.0 / class_counts[t] for t in targets]
+    sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
+
+    dataloaders = {
+        'train': DataLoader(image_datasets['train'], batch_size=128, sampler=sampler, num_workers=4, pin_memory=True),
+        'val':   DataLoader(image_datasets['val'],   batch_size=128, shuffle=False, num_workers=4, pin_memory=True),
+    }
+
+    # 5. MobileNetV3 모델 불러오기 및 수정 (전이 학습)
     model = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.IMAGENET1K_V2)
-    
-    # 마지막 분류기 부분을 우리가 가진 클래스 개수(3개)에 맞게 뜯어고침
     num_features = model.classifier[3].in_features
     model.classifier[3] = nn.Linear(num_features, len(class_names))
     model = model.to(device)
 
-    # 5. 오차 함수와 최적화 도구 설정
+    # 6. 오차 함수와 최적화 도구 설정
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    # 6. 본격적인 학습 루프
+    # 7. 본격적인 학습 루프
     num_epochs = 10  # 일단 10번 반복 (결과를 보고 나중에 늘려도 됨)
     best_acc = 0.0
 
@@ -96,18 +107,17 @@ def train_model():
 
             print(f'{phase.capitalize():>5} Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}')
 
-            # 검증 정확도가 역대 최고 기록을 깼을 때만 모델을 덮어쓰기 저장
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 os.makedirs('./weights', exist_ok=True)
                 torch.save(model.state_dict(), './weights/best_auralens_model.pth')
-                print("  🌟 최고 성능 갱신! (best_auralens_model.pth 저장 완료)")
+                print("  [BEST] 최고 성능 갱신! (best_auralens_model.pth 저장 완료)")
 
         print() # 에포크 간 줄바꿈
 
     time_elapsed = time.time() - start_time
-    print(f'🎉 학습 완전 종료! 소요 시간: {time_elapsed // 60:.0f}분 {time_elapsed % 60:.0f}초')
-    print(f'🏆 최종 최고 검증 정확도(Best Val Acc): {best_acc:.4f}')
+    print(f'[DONE] 학습 완전 종료! 소요 시간: {time_elapsed // 60:.0f}분 {time_elapsed % 60:.0f}초')
+    print(f'[RESULT] 최종 최고 검증 정확도: {best_acc:.4f}')
 
 if __name__ == '__main__':
     train_model()

@@ -28,7 +28,7 @@ def get_dataloaders(data_dir, batch_size=32):
     ])
 
     # 3. 폴더에서 이미지 불러오기 (자동 라벨링)
-    # 💡 꿀팁: ImageFolder는 폴더 안에 있는 하위 폴더 개수를 스스로 세어서 4개 클래스로 자동 분리합니다.
+    # 💡 꿀팁: ImageFolder는 폴더 이름을 알파벳 순으로 정렬해 클래스 인덱스를 자동 부여합니다. (food=0, person=1, scenery=2)
     train_dataset = datasets.ImageFolder(os.path.join(data_dir, 'train'), transform=train_transforms)
     val_dataset = datasets.ImageFolder(os.path.join(data_dir, 'val'), transform=val_transforms)
 
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     try:
         train_loader, val_loader, classes = get_dataloaders(data_dir='./dataset', batch_size=16)
         
-        # 여기서 자동으로 4개의 클래스('food', 'person', 'scenery', 'unknown')가 잘 잡히는지 출력합니다.
+        # 자동으로 3개의 클래스(['food', 'person', 'scenery'])가 잡히는지 확인합니다.
         print(f"✅ 자동으로 찾아낸 클래스 목록: {classes}") 
         
         # 첫 번째 배치(Batch) 확인

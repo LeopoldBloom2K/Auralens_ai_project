@@ -1,13 +1,30 @@
+# ── 데이터 / 모델 아티팩트 ───────────────────────────────
 /data/*
 /dataset/*
-/models/*
+/raw_datasets/*
+weights/*
+
+# ── Python ───────────────────────────────────────────────
+*.pyc
+*.pyo
+__pycache__/
+*.egg-info/
+dist/
+build/
+
+# ── 가상 환경 ────────────────────────────────────────────
+/venv/
+/env/
+/.venv/
+
+# ── 로그 / 임시 파일 ─────────────────────────────────────
 /logs/*
 /outputs/*
-/venv/*
-*.pyc
-__pycache__/
+*.log
+tmp/
+
+# ── 도구 설정 ────────────────────────────────────────────
+.claude/
 .DS_Store
 .idea/
 .vscode/
-weights/*
-raw_datasets/*
